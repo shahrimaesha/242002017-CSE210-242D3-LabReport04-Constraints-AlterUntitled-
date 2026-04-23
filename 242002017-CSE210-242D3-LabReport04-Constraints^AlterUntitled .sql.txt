@@ -1,0 +1,78 @@
+
+DROP DATABASE IF EXISTS faculty_trigger_lab;
+CREATE DATABASE faculty_trigger_lab;
+USE faculty_trigger_lab;
+CREATE TABLE EMPLOYEE (
+EmpID INT PRIMARY KEY,
+EmpName VARCHAR(100) NOT NULL,
+BasicSalary DECIMAL(10,2) NOT NULL,
+StartDate DATE NOT NULL,
+NoOfPub INT NOT NULL CHECK(NoOfPub >= 0),
+IncrementRate DECIMAL(5,2) DEFAULT 0,
+UpdatedSalary DECIMAL(10,2)
+);
+
+CREATE TABLE SALARY_LOG (
+LogID INT AUTO_INCREMENT PRIMARY KEY,
+EmpID INT,
+OldSalary DECIMAL(10,2),
+NewSalary DECIMAL(10,2),
+ChangedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+Note VARCHAR(100),
+FOREIGN KEY (EmpID) REFERENCES EMPLOYEE(EmpID)
+);
+DELIMITER //
+CREATE TRIGGER trg_calculate_salary
+BEFORE UPDATE ON EMPLOYEE
+FOR EACH ROW
+BEGIN
+DECLARE duration INT;
+SET duration = TIMESTAMPDIFF(YEAR, OLD.StartDate, CURDATE());
+
+IF duration > 1 THEN
+IF NEW.NoOfPub > 4 THEN
+SET NEW.IncrementRate = 20.00;
+ELSEIF NEW.NoOfPub IN (2, 3) THEN
+SET NEW.IncrementRate = 10.00;
+ELSEIF NEW.NoOfPub = 1 THEN
+SET NEW.IncrementRate = 5.00;
+ELSE
+SET NEW.IncrementRate = 0.00;
+END IF;
+ELSE
+SET NEW.IncrementRate = 0.00;
+END IF;
+
+SET NEW.UpdatedSalary = OLD.BasicSalary + (OLD.BasicSalary * (NEW.IncrementRate / 100));
+END; //
+DELIMITER ;
+
+DELIMITER //
+CREATE TRIGGER trg_log_salary_change
+AFTER UPDATE ON EMPLOYEE
+FOR EACH ROW
+BEGIN
+IF OLD.UpdatedSalary <> NEW.UpdatedSalary OR (OLD.UpdatedSalary IS NULL AND NEW.UpdatedSalary IS NOT NULL) THEN
+INSERT INTO SALARY_LOG (EmpID, OldSalary, NewSalary, Note)
+VALUES (NEW.EmpID, OLD.BasicSalary, NEW.UpdatedSalary, CONCAT('Increment of ', NEW.IncrementRate, '% applied'));
+END IF;
+END; //
+DELIMITER ;
+INSERT INTO EMPLOYEE (EmpID, EmpName, BasicSalary, StartDate, NoOfPub) VALUES
+(101, 'Alice Smith', 50000, '2020-01-15', 5),
+(102, 'Bob Johnson', 50000, '2021-05-20', 3),
+(103, 'Charlie Brown', 50000, '2022-03-10', 1),
+(104, 'David Miller', 50000, '2026-01-01', 10), -- Joined this year (duration < 1)
+(105, 'Eve Adams', 60000, '2019-08-12', 0),
+(106, 'Frank White', 45000, '2026-02-01', 2),
+(107, 'Grace Lee', 70000, '2018-12-25', 6),
+(108, 'Henry Ford', 55000, '2020-06-30', 2);
+
+UPDATE EMPLOYEE SET NoOfPub = 5 WHERE EmpID = 101;
+UPDATE EMPLOYEE SET NoOfPub = 3 WHERE EmpID = 102;
+UPDATE EMPLOYEE SET NoOfPub = 1 WHERE EmpID = 103;
+UPDATE EMPLOYEE SET NoOfPub = 10 WHERE EmpID = 104;
+
+
+SELECT * FROM EMPLOYEE;
+SELECT * FROM SALARY_LOG;
